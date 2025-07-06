@@ -4,7 +4,7 @@ Extract physics collision data from Counter-Strike 2 maps (both official and wor
 
 ## What it does
 
-This tool finds your CS2 maps and extracts their physics collision meshes as `.vphys` files. Useful for game development, analysis, or physics simulation projects.
+This tool finds your CS2 maps and extracts their physics collision meshes in multiple formats from world_physics.vmdl_c files. Choose between `.tri` (triangle mesh), `.vphys` (physics data), or both formats. Useful for Visibility checks on external cheats.
 
 ## Requirements
 
@@ -33,18 +33,24 @@ This tool finds your CS2 maps and extracts their physics collision meshes as `.v
    - All maps (official + workshop)
    - Only official maps  
    - Only workshop maps
-3. Physics data saves to `vphys` folder as `{mapname}.vphys`
+3. Choose output format:
+   - `.tri` files (triangle mesh data)
+   - `.vphys` files (physics collision data)
+   - Both formats
+4. Physics data saves to output folder as `{mapname}.tri` and/or `{mapname}.vphys`
 
 ## How it works
 
 - Automatically finds your Steam installation
 - Scans CS2 map files (`.vpk` format)
-- Extracts physics collision meshes from `world_physics` files
-- Saves readable physics data for each map
+- Extracts physics collision meshes from `world_physics.vmdl_c` files
+- Saves collision data in your chosen format(s)
 
-## Output
+## Output Formats
 
-Each map generates a `.vphys` file containing the collision mesh data in text format.
+- **`.tri`** - Triangle mesh format with vertex coordinates
+- **`.vphys`** - Physics collision data in text format
+- Choose one or both formats during extraction
 
 ## License
 
