@@ -4,7 +4,7 @@ Extract physics collision data from Counter-Strike 2 maps (both official and wor
 
 ## What it does
 
-This tool finds your CS2 maps and extracts their physics collision meshes in multiple formats from world_physics.vmdl_c files. Choose between `.tri` (triangle mesh), `.vphys` (physics data), or both formats. Useful for Visibility checks on external cheats.
+This tool finds your CS2 maps and extracts their physics collision meshes in multiple formats from `world_physics.vmdl_c` files. Choose between `.tri` (triangle mesh), `.vphys` (physics data), or both formats. Useful for Visibility checks on external cheats.
 
 ## Requirements
 
