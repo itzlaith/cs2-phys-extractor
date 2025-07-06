@@ -1,4 +1,5 @@
 ﻿using Microsoft.Win32;
+using SkiaSharp;
 using SteamDatabase.ValvePak;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -15,15 +16,16 @@ namespace PhysExtractor.src
 
             try
             {
-                // Find Steam installation
-                string? steamPath = FindSteamPath();
-                if (string.IsNullOrEmpty(steamPath))
+                Console.WriteLine("Steam Path at: " + SteamTools.GetSteamInstallPath());
+                var cs2Path = SteamTools.FindCS2InstallPath(false);
+                if (cs2Path != null)
                 {
-                    Console.WriteLine("ERROR: Steam installation not found!");
-                    return;
+                    Console.WriteLine("CS2 Installed in: " + cs2Path);
                 }
-
-                Console.WriteLine($"Steam found at: {steamPath}");
+                else
+                {
+                    Console.WriteLine("CS2 not found.");
+                }
 
                 // Show menu for map selection
                 ShowMapMenu();
@@ -53,14 +55,14 @@ namespace PhysExtractor.src
                 switch (mapChoice)
                 {
                     case 1:
-                        ProcessOfficialMaps(steamPath, triOutputDir, vphysOutputDir);
-                        ProcessWorkshopMaps(steamPath, triOutputDir, vphysOutputDir);
+                        ProcessOfficialMaps(cs2Path, triOutputDir, vphysOutputDir);
+                        ProcessWorkshopMaps(cs2Path, triOutputDir, vphysOutputDir);
                         break;
                     case 2:
-                        ProcessOfficialMaps(steamPath, triOutputDir, vphysOutputDir);
+                        ProcessOfficialMaps(cs2Path, triOutputDir, vphysOutputDir);
                         break;
                     case 3:
-                        ProcessWorkshopMaps(steamPath, triOutputDir, vphysOutputDir);
+                        ProcessWorkshopMaps(cs2Path, triOutputDir, vphysOutputDir);
                         break;
                 }
 
@@ -104,44 +106,12 @@ namespace PhysExtractor.src
             }
         }
 
-        static string? FindSteamPath()
-        {
-            try
-            {
-                // Only try registry access on Windows
-                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                {
-                    using (var key = Registry.CurrentUser.OpenSubKey(@"Software\Valve\Steam"))
-                    {
-                        if (key?.GetValue("SteamPath") is string steamPath)
-                            return steamPath.Replace('/', '\\');
-                    }
-                }
-
-                string[] commonPaths = {
-                    @"C:\Program Files (x86)\Steam",
-                    @"C:\Program Files\Steam",
-                    @"D:\Steam",
-                    @"E:\Steam"
-                };
-
-                foreach (string path in commonPaths)
-                {
-                    if (Directory.Exists(path))
-                        return path;
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Warning: Error finding Steam path: {ex.Message}");
-            }
-            return null;
-        }
-
-        static void ProcessOfficialMaps(string steamPath, string? triOutputDir, string? vphysOutputDir)
+        static void ProcessOfficialMaps(string cs2Path, string? triOutputDir, string? vphysOutputDir)
         {
             Console.WriteLine("\nProcessing official maps...");
-            string officialMapsPath = Path.Combine(steamPath, @"steamapps\common\Counter-Strike Global Offensive\game\csgo\maps");
+
+            string officialMapsPath = Path.Combine(cs2Path, "game", "csgo", "maps");
+            Console.WriteLine("Offical map path: " + officialMapsPath);
 
             if (!Directory.Exists(officialMapsPath))
             {
@@ -171,10 +141,16 @@ namespace PhysExtractor.src
             }
         }
 
-        static void ProcessWorkshopMaps(string steamPath, string? triOutputDir, string? vphysOutputDir)
+        static void ProcessWorkshopMaps(string cs2Path, string? triOutputDir, string? vphysOutputDir)
         {
             Console.WriteLine("\nProcessing workshop maps...");
-            string workshopPath = Path.Combine(steamPath, @"steamapps\workshop\content\730");
+
+            string buffer = cs2Path.Replace("Counter-Strike Global Offensive", "").TrimEnd('\\');
+            string basePath = buffer.Replace("common", "").TrimEnd('\\');
+
+            string workshopPath = Path.Combine(basePath, "workshop", "content", "730");
+
+            Console.WriteLine("Workshop Path: " + workshopPath);
 
             if (!Directory.Exists(workshopPath))
             {
