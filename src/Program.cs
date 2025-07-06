@@ -503,14 +503,22 @@ namespace PhysExtractor.src
                 if (string.IsNullOrEmpty(collisionGroup))
                     break;
 
-                // Remove quotes and check for default group
-                string cleanGroup = collisionGroup.Trim('"');
-                if (cleanGroup.Equals("default", StringComparison.OrdinalIgnoreCase))
+                // Remove quotes and check for default group (more flexible matching)
+                string cleanGroup = collisionGroup.Trim('"').Trim();
+                if (cleanGroup.Equals("default", StringComparison.OrdinalIgnoreCase) ||
+                    cleanGroup.Equals("Default", StringComparison.Ordinal) ||
+                    cleanGroup == "0") // Sometimes default is represented as "0"
+                {
                     indices.Add(index);
+                }
 
                 index++;
-                if (index > 10) // Safety break
-                    break;
+            }
+
+            // If no default collision groups found, add index 0 as fallback
+            if (indices.Count == 0)
+            {
+                indices.Add(0);
             }
 
             return indices;
@@ -519,6 +527,7 @@ namespace PhysExtractor.src
         static void ProcessHulls(KV3Parser parser, List<int> collisionIndices, List<Triangle> triangles)
         {
             int index = 0;
+            int processedHulls = 0;
 
             while (true)
             {
@@ -530,10 +539,14 @@ namespace PhysExtractor.src
 
                 if (int.TryParse(collisionIndexStr, out int collisionIndex) && collisionIndices.Contains(collisionIndex))
                 {
-                    // Get vertex data
-                    string vertexPath = $"m_parts[0].m_rnShape.m_hulls[{index}].m_Hull.m_VertexPositions";
-                    string vertexData = parser.GetValue(vertexPath);
+                    // Try multiple vertex data paths (like the C++ parser)
+                    string vertexData = null;
 
+                    // First try m_VertexPositions
+                    string vertexPath = $"m_parts[0].m_rnShape.m_hulls[{index}].m_Hull.m_VertexPositions";
+                    vertexData = parser.GetValue(vertexPath);
+
+                    // If empty, try m_Vertices
                     if (string.IsNullOrEmpty(vertexData))
                     {
                         vertexPath = $"m_parts[0].m_rnShape.m_hulls[{index}].m_Hull.m_Vertices";
@@ -542,23 +555,37 @@ namespace PhysExtractor.src
 
                     if (!string.IsNullOrEmpty(vertexData))
                     {
-                        var vertices = ParseFloatArray(vertexData);
-                        var faces = ParseByteArray(parser.GetValue($"m_parts[0].m_rnShape.m_hulls[{index}].m_Hull.m_Faces"));
-                        var edges = ParseEdgeArray(parser.GetValue($"m_parts[0].m_rnShape.m_hulls[{index}].m_Hull.m_Edges"));
+                        try
+                        {
+                            var vertices = ParseFloatArray(vertexData);
+                            var faces = ParseByteArray(parser.GetValue($"m_parts[0].m_rnShape.m_hulls[{index}].m_Hull.m_Faces"));
+                            var edges = ParseEdgeArray(parser.GetValue($"m_parts[0].m_rnShape.m_hulls[{index}].m_Hull.m_Edges"));
 
-                        ConvertHullToTriangles(vertices, faces, edges, triangles);
+                            if (vertices.Count > 0 && faces.Count > 0 && edges.Count > 0)
+                            {
+                                int trianglesBefore = triangles.Count;
+                                ConvertHullToTriangles(vertices, faces, edges, triangles);
+                                int trianglesAdded = triangles.Count - trianglesBefore;
+                                processedHulls++;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"    ERROR processing hull {index}: {ex.Message}");
+                        }
                     }
                 }
 
                 index++;
-                if (index > 100) // Safety break
-                    break;
             }
+
+            Console.WriteLine($"    Total hulls processed: {processedHulls}");
         }
 
         static void ProcessMeshes(KV3Parser parser, List<int> collisionIndices, List<Triangle> triangles)
         {
             int index = 0;
+            int processedMeshes = 0;
 
             while (true)
             {
@@ -570,33 +597,62 @@ namespace PhysExtractor.src
 
                 if (int.TryParse(collisionIndexStr, out int collisionIndex) && collisionIndices.Contains(collisionIndex))
                 {
-                    var triangleIndices = ParseIntArray(parser.GetValue($"m_parts[0].m_rnShape.m_meshes[{index}].m_Mesh.m_Triangles"));
-                    var vertices = ParseFloatArray(parser.GetValue($"m_parts[0].m_rnShape.m_meshes[{index}].m_Mesh.m_Vertices"));
+                    try
+                    {
+                        var triangleIndices = ParseIntArray(parser.GetValue($"m_parts[0].m_rnShape.m_meshes[{index}].m_Mesh.m_Triangles"));
+                        var vertices = ParseFloatArray(parser.GetValue($"m_parts[0].m_rnShape.m_meshes[{index}].m_Mesh.m_Vertices"));
 
-                    ConvertMeshToTriangles(vertices, triangleIndices, triangles);
+                        if (vertices.Count > 0 && triangleIndices.Count > 0)
+                        {
+                            int trianglesBefore = triangles.Count;
+                            ConvertMeshToTriangles(vertices, triangleIndices, triangles);
+                            int trianglesAdded = triangles.Count - trianglesBefore;
+                            processedMeshes++;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"    ERROR processing mesh {index}: {ex.Message}");
+                    }
                 }
-
                 index++;
-                if (index > 100) // Safety break
-                    break;
             }
+
+            Console.WriteLine($"    Total meshes processed: {processedMeshes}");
         }
 
         static void ConvertHullToTriangles(List<Vector3> vertices, List<byte> faces, List<Edge> edges, List<Triangle> triangles)
         {
             foreach (byte startEdge in faces)
             {
+                if (startEdge >= edges.Count) continue;
+
                 int edge = edges[startEdge].next;
-                while (edge != startEdge)
+                int iterations = 0;
+                const int maxIterations = 1000; // Increased safety limit for complex hulls
+
+                while (edge != startEdge && iterations < maxIterations)
                 {
+                    if (edge >= edges.Count) break;
+
                     int nextEdge = edges[edge].next;
-                    triangles.Add(new Triangle
+                    if (nextEdge >= edges.Count) break;
+
+                    // Ensure valid vertex indices
+                    if (edges[startEdge].origin < vertices.Count &&
+                        edges[edge].origin < vertices.Count &&
+                        edges[nextEdge].origin < vertices.Count)
                     {
-                        p1 = vertices[edges[startEdge].origin],
-                        p2 = vertices[edges[edge].origin],
-                        p3 = vertices[edges[nextEdge].origin]
-                    });
+                        triangles.Add(new Triangle
+                        {
+                            p1 = vertices[edges[startEdge].origin],
+                            p2 = vertices[edges[edge].origin],
+                            p3 = vertices[edges[nextEdge].origin]
+                        });
+                    }
+
                     edge = nextEdge;
+                    iterations++;
                 }
             }
         }
