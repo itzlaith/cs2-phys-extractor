@@ -17,6 +17,7 @@ namespace PhysExtractor.src
             {
                 // Find Steam installation
                 string? steamPath = FindSteamPath();
+
                 if (string.IsNullOrEmpty(steamPath))
                 {
                     Console.WriteLine("ERROR: Steam installation not found!");
@@ -24,6 +25,17 @@ namespace PhysExtractor.src
                 }
 
                 Console.WriteLine($"Steam found at: {steamPath}");
+
+                // Find cs2 installation
+                string? Cs2Path = FindCS2Installation(steamPath);
+
+                if (string.IsNullOrEmpty(Cs2Path))
+                {
+                    Console.WriteLine("ERROR: CS2 installation not found!");
+                    return;
+                }
+
+                Console.WriteLine($"CS2 found at: {Cs2Path}");
 
                 // Show menu for map selection
                 ShowMapMenu();
@@ -119,11 +131,11 @@ namespace PhysExtractor.src
                 }
 
                 string[] commonPaths = {
-                    @"C:\Program Files (x86)\Steam",
-                    @"C:\Program Files\Steam",
-                    @"D:\Steam",
-                    @"E:\Steam"
-                };
+            @"C:\Program Files (x86)\Steam",
+            @"C:\Program Files\Steam",
+            @"D:\Steam",
+            @"E:\Steam"
+        };
 
                 foreach (string path in commonPaths)
                 {
@@ -138,10 +150,75 @@ namespace PhysExtractor.src
             return null;
         }
 
+
+        static string? FindCS2Installation(string steamPath)
+        {
+            try
+            {
+                // Check Steam library folders from libraryfolders.vdf
+                string libraryFoldersPath = Path.Combine(steamPath, "steamapps", "libraryfolders.vdf");
+
+                if (File.Exists(libraryFoldersPath))
+                {
+                    string content = File.ReadAllText(libraryFoldersPath);
+                    var libraryPaths = new List<string>();
+
+                    // Parse the VDF file to extract library paths
+                    string[] lines = content.Split('\n');
+                    foreach (string line in lines)
+                    {
+                        if (line.Contains("\"path\""))
+                        {
+                            // Extract path from "path" "C:\\path\\to\\library"
+                            int startIndex = line.IndexOf("\"", line.IndexOf("\"path\"") + 6) + 1;
+                            int endIndex = line.LastIndexOf("\"");
+                            if (startIndex > 0 && endIndex > startIndex)
+                            {
+                                string path = line.Substring(startIndex, endIndex - startIndex);
+                                path = path.Replace("\\\\", "\\"); // Handle escaped backslashes
+                                libraryPaths.Add(path);
+                            }
+                        }
+                    }
+
+                    // Check each library path for CS2
+                    foreach (string libraryPath in libraryPaths)
+                    {
+                        string cs2Path = Path.Combine(libraryPath, "steamapps", "common", "Counter-Strike Global Offensive");
+                        if (Directory.Exists(cs2Path))
+                        {
+                            return cs2Path;
+                        }
+                    }
+                }
+
+                // Fallback: check default Steam library
+                string defaultCS2Path = Path.Combine(steamPath, "steamapps", "common", "Counter-Strike Global Offensive");
+                if (Directory.Exists(defaultCS2Path))
+                {
+                    return defaultCS2Path;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Warning: Error finding CS2 installation: {ex.Message}");
+            }
+
+            return null;
+        }
+
         static void ProcessOfficialMaps(string steamPath, string? triOutputDir, string? vphysOutputDir)
         {
             Console.WriteLine("\nProcessing official maps...");
-            string officialMapsPath = Path.Combine(steamPath, @"steamapps\common\Counter-Strike Global Offensive\game\csgo\maps");
+
+            string? cs2InstallPath = FindCS2Installation(steamPath);
+            if (cs2InstallPath == null)
+            {
+                Console.WriteLine("CS2 installation not found in any Steam library!");
+                return;
+            }
+
+            string officialMapsPath = Path.Combine(cs2InstallPath, @"game\csgo\maps");
 
             if (!Directory.Exists(officialMapsPath))
             {
@@ -174,7 +251,16 @@ namespace PhysExtractor.src
         static void ProcessWorkshopMaps(string steamPath, string? triOutputDir, string? vphysOutputDir)
         {
             Console.WriteLine("\nProcessing workshop maps...");
-            string workshopPath = Path.Combine(steamPath, @"steamapps\workshop\content\730");
+            string? cs2InstallPath = FindCS2Installation(steamPath);
+            if (cs2InstallPath == null)
+            {
+                Console.WriteLine("CS2 installation not found for workshop maps!");
+                return;
+            }
+
+            // Workshop maps are typically in the Steam library where CS2 is installed
+            string steamLibraryPath = Path.GetDirectoryName(Path.GetDirectoryName(cs2InstallPath)); // Go up two levels from CS2 install
+            string workshopPath = Path.Combine(steamLibraryPath, @"workshop\content\730");
 
             if (!Directory.Exists(workshopPath))
             {
